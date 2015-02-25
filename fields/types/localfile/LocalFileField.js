@@ -5,6 +5,8 @@ var _ = require('underscore'),
 	Note = require('../../components/Note'),
 	Select = require('react-select');
 
+var SUPPORTED_PREVIEW_TYPES = ['image/gif', 'image/png', 'image/jpeg', 'image/bmp', 'image/x-icon', 'application/pdf', 'image/x-tiff', 'image/x-tiff', 'application/postscript', 'image/vnd.adobe.photoshop'];
+
 module.exports = Field.create({
 	
 	fileFieldNode: function() {
@@ -25,6 +27,16 @@ module.exports = Field.create({
 		}
 	},
 
+	getFileSourceType: function() {
+		if(this.hasLocal()) {
+			return this.state.localSourceType;
+		} else if (this.hasExisting()) {
+			return this.props.value.filetype;
+		} else {
+			return null;
+		}
+	},
+
 	getFileURL: function() {
 		if (!this.hasLocal() && this.hasExisting()) {
 			return this.props.value.url;
@@ -36,15 +48,33 @@ module.exports = Field.create({
 		this.setState({
 			removeExisting: false,
 			localSource:    null,
+			localSourceType: null,
 			origin:         false,
 			action:         null
 		});
 	},
 
 	fileChanged: function (event) {
-		this.setState({
-			origin: "local"
-		});
+		var self = this;
+
+		if (window.FileReader && event.target.files.length > 0) {
+			var file = event.target.files[0];
+			var fileReader = new FileReader();
+
+			fileReader.onload = function (e) {
+				if (!self.isMounted()) return;
+				self.setState({
+					localSourceType: file.type,
+					localSource: e.target.result,
+					origin: "local"
+				});
+			};
+			fileReader.readAsDataURL(file);
+		} else {
+			this.setState({
+				origin: "local"
+			});
+		}
 	},
 
 	removeFile: function (e) {
@@ -96,6 +126,36 @@ module.exports = Field.create({
 		}
 	},
 
+	/**
+	 * Render an image preview for supported types given at top of file
+	 */
+	renderImagePreview: function() {
+		var iconClassName;
+		var className = 'image-preview';
+
+		//check to see if the file type allows for a preview
+		if (this.hasLocal() && !_.contains(SUPPORTED_PREVIEW_TYPES, this.getFileSourceType())) {
+			return false;
+		}
+
+		var body = [this.renderImagePreviewThumbnail()];
+		if (iconClassName) body.push(<div  key={this.props.path + '_preview_icon'} className={iconClassName} />);
+
+		var url = this.getFileURL();
+
+		if (url) {
+			body = <a className='img-thumbnail' href={this.getFileURL()}>{body}</a>;
+		} else {
+			body = <div className='img-thumbnail'>{body}</div>;
+		}
+
+		return <div key={this.props.path + '_preview'} className={className}>{body}</div>;
+	},
+
+	renderImagePreviewThumbnail: function() {
+		return <img key={this.props.path + '_preview_thumbnail'} className='img-load' style={ { height: '90' } } src={this.getFileSource()} />;
+	},
+
 	renderFileDetails: function (add) {
 		var values = null;
 
@@ -109,6 +169,10 @@ module.exports = Field.create({
 			{values}
 			{add}
 		</div>;
+	},
+
+	renderImageDimensions: function() {
+		return <div className='field-value'>{this.props.value.width} x {this.props.value.height}</div>;
 	},
 
 	renderAlert: function() {
@@ -178,11 +242,13 @@ module.exports = Field.create({
 
 		if (this.shouldRenderField()) {
 			if (hasFile) {
+				container.push(this.renderImagePreview());
 				container.push(this.renderFileDetails(this.renderAlert()));
 			}
 			body.push(this.renderFileToolbar());
 		} else {
 			if (hasFile) {
+				container.push(this.renderImagePreview());
 				container.push(this.renderFileDetails());
 			} else {
 				container.push(<div className='help-block'>no file</div>);
